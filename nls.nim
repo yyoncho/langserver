@@ -77,8 +77,7 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
 
 proc initialized(_: JsonNode):
     Future[void] {.async} =
-  # no-op
-  discard
+  discard # no-op
 
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer()
@@ -89,9 +88,8 @@ when isMainModule:
   var
     pipe = createPipe(register = true)
     stdioThread: Thread[AsyncPipe]
-
   createThread(stdioThread, copyStdioToPipe, pipe)
-
-  let connection = StreamConnection.new(asyncPipeInput(pipe),
-                                        Async(fileOutput(stdout, allowAsyncOps = true)));
+  let connection = StreamConnection.new(
+    asyncPipeInput(pipe),
+    Async(fileOutput(stdout, allowAsyncOps = true)));
   waitFor connection.start()
