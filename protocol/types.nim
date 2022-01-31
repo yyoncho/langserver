@@ -569,3 +569,12 @@ type
     textDocument*: TextDocumentIdentifier
     position*: Position
     newName*: string
+
+  SignatureHelpContext* = ref object of RootObj
+    triggerKind*: int
+    triggerCharacter*: Option[string]
+    isRetrigger*: bool
+    activeSignatureHelp*: SignatureHelp
+
+  SignatureHelpParams* = ref object of TextDocumentPositionParams
+    context*: SignatureHelpContext

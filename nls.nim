@@ -150,8 +150,8 @@ proc initialize(ls: LanguageServer, params: InitializeParams):
       hoverProvider: some(true),
       completionProvider: CompletionOptions(
         resolveProvider: some(false)),
-      # signatureHelpProvider: SignatureHelpOptions(
-      #   triggerCharacters: @["(", ","]),
+      signatureHelpProvider: SignatureHelpOptions(
+        triggerCharacters: some(@["(", ","])),
       definitionProvider: some(true),
       referencesProvider: some(true)#,
       # documentSymbolProvider: some(true),
@@ -235,7 +235,6 @@ proc hover(ls: LanguageServer, params: HoverParams):
         uriToStash(uri),
         line + 1,
         ls.getCharacter(uri, line, character))
-    debugEcho fmt "Found {suggestions.len} matches for {%params}"
     if suggestions.len == 0:
       return none[Hover]();
     else:
@@ -260,7 +259,7 @@ proc toLocation(suggest: Suggest): Location =
 proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument):
-    result = ls
+    return ls
       .getNimsuggest(uri)
       .def(uriToPath(uri),
            uriToStash(uri),
@@ -268,12 +267,11 @@ proc definition(ls: LanguageServer, params: TextDocumentPositionParams):
            ls.getCharacter(uri, line, character))
       .await()
       .map(toLocation);
-    debugEcho fmt "found {result.len} matches for {%params}"
 
 proc references(ls: LanguageServer, params: ReferenceParams):
     Future[seq[Location]] {.async} =
   with (params.position, params.textDocument, params.context):
-    result = ls
+    return ls
       .getNimsuggest(uri)
       .use(uriToPath(uri),
            uriToStash(uri),
@@ -282,7 +280,6 @@ proc references(ls: LanguageServer, params: ReferenceParams):
       .await()
       .filter(suggest => suggest.section != ideDef or includeDeclaration)
       .map(toLocation);
-    debugEcho fmt "found {result.len} matches for {%params}"
 
 proc toCompletionItem(suggest: Suggest): CompletionItem =
   with suggest:
@@ -296,7 +293,7 @@ proc toCompletionItem(suggest: Suggest): CompletionItem =
 proc completion(ls: LanguageServer, params: CompletionParams):
     Future[seq[CompletionItem]] {.async} =
   with (params.position, params.textDocument):
-    result = ls
+    return ls
       .getNimsuggest(uri)
       .sug(uriToPath(uri),
            uriToStash(uri),
@@ -304,7 +301,6 @@ proc completion(ls: LanguageServer, params: CompletionParams):
            ls.getCharacter(uri, line, character))
       .await()
       .map(toCompletionItem);
-    debugEcho fmt "found {result.len} matches for {%params}"
 
 proc registerLanguageServerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(

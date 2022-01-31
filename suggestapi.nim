@@ -1,7 +1,6 @@
 import osproc,
   strutils,
   with,
-  macros,
   strformat,
   os,
   asyncnet,
@@ -157,7 +156,9 @@ proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string, l
   let socket = newAsyncSocket()
   waitFor socket.connect("127.0.0.1", Port(self.port))
 
-  discard socket.send("{command} {file};{dirtyFile}:{line}:{column}".fmt & "\c\L", {})
+  let commandString = fmt "{command} {file};{dirtyFile}:{line}:{column}"
+  debugEcho fmt "Sending command to nimsuggest:\n\t{commandString}"
+  discard socket.send(commandString  & "\c\L")
   result = @[]
   var line: string = await socket.recvLine();
   while line != "\r\n" and line != "":
@@ -165,6 +166,7 @@ proc call*(self: SuggestApi, command: string, file: string, dirtyFile: string, l
     line = await socket.recvLine();
   if (line == ""):
     raise newException(Exception, "Socket closed.")
+  debugEcho fmt "Received {result.len} result(s) for {command}."
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: SuggestApi, file: string, dirtyfile = "",
