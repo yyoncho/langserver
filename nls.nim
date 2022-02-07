@@ -1,25 +1,31 @@
 import
+  posix,
+  os,
   faststreams/async_backend,
   faststreams/asynctools_adapters,
   faststreams/textio,
   faststreams/inputs
+
+proc writeToPipe(p: AsyncPipe, data: pointer, nbytes: int) =
+  if posix.write(p.getWriteHandle, data, cint(nbytes)) < 0:
+    raiseOsError(osLastError())
 
 proc copyStdioToPipe(pipe: AsyncPipe) {.thread.} =
   var ch = "X222"
   var ch2 = "\n"
 
   while ch[0] != '\0':
-    discard waitFor write(pipe, ch[0].addr, 1)
-    discard waitFor write(pipe, ch[0].addr, 1)
-    discard waitFor write(pipe, ch[0].addr, 1)
-    discard waitFor write(pipe, ch[0].addr, 1)
-    discard waitFor write(pipe, ch[0].addr, 1)
-    discard waitFor write(pipe, ch[0].addr, 1)
-    discard waitFor write(pipe, ch2[0].addr, 1)
+    writeToPipe(pipe, ch[0].addr, 1)
+    writeToPipe(pipe, ch[0].addr, 1)
+    writeToPipe(pipe, ch[0].addr, 1)
+    writeToPipe(pipe, ch[0].addr, 1)
+    writeToPipe(pipe, ch[0].addr, 1)
+    writeToPipe(pipe, ch[0].addr, 1)
+    writeToPipe(pipe, ch2[0].addr, 1)
 
 proc myReadLine(input: AsyncInputStream): Future[void] {.async.} =
   while input.readable:
-    discard input.readLine()
+    echo await input.readLine()
 
 when isMainModule:
   var
