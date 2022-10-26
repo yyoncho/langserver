@@ -1,4 +1,4 @@
-import macros, strformat, faststreams/async_backend, itertools,
+import macros, strformat, faststreams/async_backend,
   faststreams/asynctools_adapters, faststreams/inputs, faststreams/outputs,
   json_rpc/streamconnection, os, sugar, sequtils, hashes, osproc,
   suggestapi, protocol/enums, protocol/types, with, tables, strutils, sets,
@@ -340,7 +340,9 @@ proc cancelPendingFileChecks(ls: LanguageServer, nimsuggest: Nimsuggest) =
         cancelFileCheck.complete()
       fileData.needsChecking = false
 
-proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
+proc getFilepath(s: Suggest): string = s.filepath
+
+proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async, gcsafe.} =
   if not ls.getWorkspaceConfiguration.await().autoCheckProject.get(true):
     return
   debug "Running diagnostics", uri = uri
@@ -366,7 +368,7 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
   ls.progress(token, "end")
 
   debug "Found diagnostics", file = filesWithDiags
-  for (path, diags) in groupBy(diagnostics, s => s.filepath):
+  for (path, diags) in groupBy(diagnostics, getFilepath):
     ls.sendDiagnostics(diags, path)
 
   # clean files with no diags
@@ -383,16 +385,16 @@ proc checkProject(ls: LanguageServer, uri: string): Future[void] {.async.} =
 
   if nimsuggest.needsCheckProject:
     nimsuggest.needsCheckProject = false
-    callSoon() do ():
+    callSoon() do () {.gcsafe.}:
       debug "Running delayed check project...", uri = uri
       traceAsyncErrors ls.checkProject(uri)
 
-proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void =
+proc createOrRestartNimsuggest(ls: LanguageServer, projectFile: string, uri = ""): void {.gcsafe.} =
   let
     configuration = ls.getWorkspaceConfiguration().waitFor()
     nimsuggestPath = configuration.nimsuggestPath.get("nimsuggest")
     timeout = configuration.timeout.get(REQUEST_TIMEOUT)
-    restartCallback = proc (ns: Nimsuggest) =
+    restartCallback = proc (ns: Nimsuggest) {.gcsafe.} =
       warn "Restarting the server due to requests being to slow", projectFile = projectFile
       ls.showMessage(fmt "Restarting nimsuggest for file {projectFile} due to timeout.",
                      MessageType.Warning)
@@ -470,7 +472,7 @@ proc didOpen(ls: LanguageServer, params: DidOpenTextDocumentParams):
       if not fut.failed:
         discard ls.warnIfUnknown(fut.read, uri, projectFile)
 
-proc scheduleFileCheck(ls: LanguageServer, uri: string) =
+proc scheduleFileCheck(ls: LanguageServer, uri: string) {.gcsafe.} =
   if not ls.getWorkspaceConfiguration().waitFor().autoCheckFile.get(true):
     return
 
@@ -489,7 +491,7 @@ proc scheduleFileCheck(ls: LanguageServer, uri: string) =
   sleepAsync(FILE_CHECK_DELAY).addCallback() do ():
     if not cancelFuture.finished:
       fileData.checkInProgress = true
-      ls.checkFile(uri).addCallback() do():
+      ls.checkFile(uri).addCallback() do () {.gcsafe.}:
         ls.openFiles[uri].checkInProgress = false
         if fileData.needsChecking:
           fileData.needsChecking = false
@@ -600,18 +602,37 @@ proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int
       .await()
       .map(toLocation)
 
-proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
+proc createRangeFromSuggest(suggest: Suggest): Range =
+  result = range(suggest.line - 1,
+                 0,
+                 suggest.endLine - 1,
+                 suggest.endCol)
+
+proc fixIdentation(s: string, indent: int): string =
+  result = s.split("\n")
+    .mapIt(if (it != ""):
+             repeat(" ", indent) & it
+           else:
+             it)
+    .join("\n")
+
+proc expand(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
     Future[ExpandResult] {.async} =
-  with (params.position, params.textDocument):
-    let expand = ls.getNimsuggest(uri)
-      .await()
-      .expand(uriToPath(uri),
-           ls.uriToStash(uri),
-           line + 1,
-           ls.getCharacter(uri, line, character))
-      .await()
+  with (params, params.position, params.textDocument):
+    let
+      lvl = level.get(-1)
+      tag = if lvl == -1: "all" else: $lvl
+      expand = ls.getNimsuggest(uri)
+        .await()
+        .expand(uriToPath(uri),
+             ls.uriToStash(uri),
+             line + 1,
+             ls.getCharacter(uri, line, character),
+             fmt "  {tag}")
+        .await()
     if expand.len != 0:
-      result = ExpandResult(content: expand[0].doc)
+      result = ExpandResult(content: expand[0].doc.fixIdentation(character),
+                            range: createRangeFromSuggest(expand[0]))
 
 proc typeDefinition(ls: LanguageServer, params: TextDocumentPositionParams, id: int):
     Future[seq[Location]] {.async} =
@@ -763,6 +784,14 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                              .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
+proc shutdownServers(ls: LanguageServer): void =
+  for ns in ls.projectFiles.values:
+    if ns.finished():
+      ns.read().stop()
+
+proc shutdown(ls: LanguageServer, params: JsonNode):
+    Future[seq[SymbolInformation]] {.async} =
+  ls.shutdownServers()
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
@@ -784,7 +813,8 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("workspace/executeCommand", partial(executeCommand, ls))
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
-  connection.register("extension/expandAll", partial(expandAll, ls))
+  connection.register("extension/macroExpand", partial(expand, ls))
+  connection.register("shutdown", partial(shutdown, ls))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))
