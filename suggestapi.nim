@@ -323,12 +323,12 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
   self.processing = false
 
 proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
-    line: int, column: int): Future[seq[Suggest]] =
+    line: int, column: int, tag = ""): Future[seq[Suggest]] =
   result = Future[seq[Suggest]]()
   let commandString = if dirtyFile != "":
-                        fmt "{command} {file};{dirtyFile}:{line}:{column}"
+                        fmt "{command} {file};{dirtyFile}:{line}:{column}{tag}"
                       else:
-                        fmt "{command} {file}:{line}:{column}"
+                        fmt "{command} {file}:{line}:{column}{tag}"
   self.requestQueue.addLast(
     SuggestCall(commandString: commandString, future: result, command: command))
 
@@ -338,8 +338,8 @@ proc call*(self: Nimsuggest, command: string, file: string, dirtyFile: string,
 
 template createFullCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = "",
-                line: int, col: int): Future[seq[Suggest]] =
-    return self.call(astToStr(command), file, dirtyfile, line, col)
+                line: int, col: int, tag = ""): Future[seq[Suggest]] =
+    return self.call(astToStr(command), file, dirtyfile, line, col, tag)
 
 template createFileOnlyCommand(command: untyped) {.dirty.} =
   proc command*(self: Nimsuggest, file: string, dirtyfile = ""): Future[seq[Suggest]] =
@@ -354,8 +354,8 @@ createFullCommand(sug)
 createFullCommand(con)
 createFullCommand(def)
 createFullCommand(declaration)
-createFullCommand(expand)
 createFullCommand(use)
+createFullCommand(expand)
 createFullCommand(highlight)
 createFullCommand(type)
 createFileOnlyCommand(chk)

@@ -600,16 +600,20 @@ proc declaration(ls: LanguageServer, params: TextDocumentPositionParams, id: int
       .await()
       .map(toLocation)
 
-proc expandAll(ls: LanguageServer, params: TextDocumentPositionParams):
+proc expandAll(ls: LanguageServer, params: ExpandTextDocumentPositionParams):
     Future[ExpandResult] {.async} =
-  with (params.position, params.textDocument):
-    let expand = ls.getNimsuggest(uri)
-      .await()
-      .expand(uriToPath(uri),
-           ls.uriToStash(uri),
-           line + 1,
-           ls.getCharacter(uri, line, character))
-      .await()
+  with (params, params.position, params.textDocument):
+    let
+      lvl = level.get(-1)
+      tag = if lvl == -1: "all" else: $lvl
+      expand = ls.getNimsuggest(uri)
+        .await()
+        .expand(uriToPath(uri),
+             ls.uriToStash(uri),
+             line + 1,
+             ls.getCharacter(uri, line, character),
+             fmt "  {tag}")
+        .await()
     if expand.len != 0:
       result = ExpandResult(content: expand[0].doc)
 
