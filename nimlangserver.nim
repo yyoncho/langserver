@@ -767,6 +767,9 @@ proc documentHighlight(ls: LanguageServer, params: TextDocumentPositionParams, i
                              .orCancelled(ls, id)
     result = suggestLocations.map(toDocumentHighlight);
 
+proc shutdown(ls: LanguageServer, params: JsonNode):
+    Future[seq[SymbolInformation]] {.async} =
+  discard
 
 proc registerHandlers*(connection: StreamConnection) =
   let ls = LanguageServer(
@@ -789,6 +792,7 @@ proc registerHandlers*(connection: StreamConnection) =
   connection.register("workspace/symbol", partial(workspaceSymbol, ls))
   connection.register("textDocument/documentHighlight", partial(documentHighlight, ls))
   connection.register("extension/expandAll", partial(expandAll, ls))
+  connection.register("shutdown", partial(shutdown, ls))
 
   connection.registerNotification("$/cancelRequest", partial(cancelRequest, ls))
   connection.registerNotification("initialized", partial(initialized, ls))

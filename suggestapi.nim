@@ -49,6 +49,8 @@ type
     scope*, localUsages*, globalUsages*: int # more usages is better
     tokenLen*: int
     version*: int
+    endLine*: int
+    endCol*: int
 
   SuggestCall* = ref object
     commandString: string
@@ -162,7 +164,7 @@ proc parseSuggest*(line: string): Suggest =
   if tokens.len < 8:
     error "Failed to parse: ", line = line
     raise newException(ValueError, fmt "Failed to parse line {line}")
-  return Suggest(
+  result = Suggest(
     qualifiedPath: tokens[2].parseQualifiedPath,
     filePath: tokens[4],
     line: parseInt(tokens[5]),
@@ -171,6 +173,9 @@ proc parseSuggest*(line: string): Suggest =
     forth: tokens[3],
     symKind: tokens[1],
     section: parseEnum[IdeCmd]("ide" & capitalizeAscii(tokens[0])))
+  if tokens.len == 11:
+    result.endLine = parseInt(tokens[9])
+    result.endCol = parseInt(tokens[10])
 
 proc name*(sug: Suggest): string =
   return sug.qualifiedPath[^1]
@@ -294,19 +299,29 @@ proc processQueue(self: Nimsuggest): Future[void] {.async.}=
         await socket.connect("127.0.0.1", Port(self.port))
         await socket.send(req.commandString & "\c\L")
 
-        var lineStr: string = await socket.recvLine()
-        while lineStr != "\r\n" and lineStr != "":
-          trace "Received line", line = lineStr
-          if req.command != "known":
-            res.add parseSuggest(lineStr)
-          else:
-            let sug = Suggest()
-            sug.section = ideKnown
-            sug.forth = lineStr
-            res.add sug
-          lineStr = await socket.recvLine();
+        const bufferSize = 1024 * 1024 * 4
+        var buffer:seq[byte] = newSeq[byte](bufferSize);
 
-        if (lineStr == ""):
+        var content = "";
+        var received = await socket.recvInto(addr buffer[0], bufferSize)
+
+        while received != 0:
+          let chunk = newString(received)
+          copyMem(chunk[0].addr, buffer[0].unsafeAddr, received)
+          content = content & chunk
+          received = await socket.recvInto(addr buffer, bufferSize)
+
+        for lineStr  in content.splitLines:
+          if lineStr != "":
+            if req.command != "known":
+              res.add parseSuggest(lineStr)
+            else:
+              let sug = Suggest()
+              sug.section = ideKnown
+              sug.forth = lineStr
+              res.add sug
+
+        if (content == ""):
           self.markFailed "Server crashed/socket closed."
           debug "Server socket closed"
           if not req.future.finished:
