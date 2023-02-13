@@ -1,8 +1,6 @@
 on:
   push:
   pull_request:
-  schedule:
-  - cron: "0 19 * * *"
 
 jobs:
   test:
@@ -10,7 +8,7 @@ jobs:
       matrix:
         os:
           # - windows-latest
-          - macos-latest
+          # - macos-latest
           - ubuntu-latest
         nimversion: # used for installation
           - devel
@@ -25,9 +23,6 @@ jobs:
         with:
           nimversion: ${{ matrix.nimversion }}
           yes: true
-      - name: Install Mercurial on macOS
-        if: matrix.os == 'macos-latest'
-        run: brew install mercurial
       - name: Install nimble
         run: |
           git clone https://github.com/yyoncho/nimble -b nim-as-dep
