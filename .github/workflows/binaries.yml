@@ -35,7 +35,7 @@ jobs:
           - target:
               os: windows
             builder: windows-2019
-            shell: msys2 {0}
+            shell: bash
     defaults:
       run:
         shell: ${{ matrix.shell }}
@@ -52,14 +52,12 @@ jobs:
           yes: true
 
       - name: Install nimble
-        shell: bash
         run: |
           git clone https://github.com/yyoncho/nimble -b nim-as-dep
           cd nimble
           nimble -y build -d:release
 
       - name: test
-        shell: bash
         run: |
           ./nimble/nimble install
       - name: Compress the Nim Language Server binaries
