@@ -61,14 +61,19 @@ jobs:
         shell: bash
         run: |
           ./nimble/nimble install
-      - name: Compress the Geth binaries
-        run: tar -c -z -v -f langserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimble
+      - name: Compress the Nim Language Server binaries
+        if: matrix.target.os != 'windows'
+        run: tar -c -z -v -f nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimlangserver
 
-      - name: Upload the Geth Binaries
+      - name: Compress the Nim Language Server binaries
+        if: matrix.target.os == 'windows'
+        run: tar -c -z -v -f nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz nimlangserver.exe
+
+      - name: Upload the Nim Language Server Binaries
         uses: actions/upload-artifact@v2
         with:
-          name: langserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz
-          path: langserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz
+          name: nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz
+          path: nimlangserver-${{ matrix.target.os }}-${{ matrix.target.cpu }}.tar.gz
 
   create-github-release:
     name: Create Github Release
@@ -82,7 +87,7 @@ jobs:
 
       - uses: ncipollo/release-action@v1
         with:
-          name: Latest Geth Binaries
+          name: Latest Langserver Binaries
           artifacts: "*/*"
           allowUpdates: true
           makeLatest: true
@@ -93,4 +98,4 @@ jobs:
         uses: geekyeggo/delete-artifact@v1
         with:
           failOnError: false
-          name: "langserver-*"
+          name: "nimlangserver-*"
