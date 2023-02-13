@@ -52,10 +52,11 @@ jobs:
           yes: true
 
       - name: Install nimble
+        shell: bash
         run: |
           git clone https://github.com/yyoncho/nimble -b nim-as-dep
           cd nimble
-          nimble -y build
+          nimble -y build -d:release
 
       - name: test
         shell: bash
